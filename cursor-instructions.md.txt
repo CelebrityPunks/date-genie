@@ -1,0 +1,132 @@
+# DateGenie CEO Manifesto for AI Engineering
+
+## Project Identity
+**Name**: DateGenie  
+**Mission**: Eliminate date-planning anxiety through AI-curated, bookable experiences.  
+**MVP Deadline**: 8 weeks from today.  
+**Success Metric**: 1,000 users who save 3+ Date Packs.
+
+---
+
+## Architecture Rules (ENFORCE THESE)
+
+### 1. **Component Purity**
+- **SwiftUI Frontend**: All views must be `struct` conforming to `View`. No UIKit unless impossible.
+- **Next.js Backend**: All API routes must be Server Components unless client interactivity is required. Use `route.ts` pattern.
+- **AI Calls**: NEVER call LLM without checking Redis cache first. Cache key format: `llm:{prompt_hash}:{user_prefs_hash}`.
+
+### 2. **Cost Guardrails**
+- **Google Places**: Rate limit 10 requests/second. Batch requests where possible. Always use `$200 free tier` budget.
+- **OpenAI**: Use `gpt-4o-mini` only. Max 500 tokens per call. Cache for 7 days.
+- **Redis**: TTL = 7 days for venue data, 30 days for AI-generated copy.
+- **Supabase**: Use RLS policies on `user_prefs` and `date_pack` tables. Never fetch full tables.
+
+### 3. **Type Safety**
+- Swift: All models must be `Codable`. Use `SwiftData` for local caching, not Core Data.
+- TypeScript: All API responses must be validated with Zod before processing. File: `/schema/venue.ts`.
+
+### 4. **Data Flow**
+1. User searches → Check Redis cache
+2. Cache miss → Query Google Places + Ticketmaster
+3. Store normalized data in Supabase `venue` table
+4. Calculate Dateability Score
+5. Generate AI pitch (if not cached)
+6. Return ranked list to SwiftUI
+7. Track event in PostHog
+
+### 5. **AI Prompt Engineering**
+- **System Prompt**: "You are a date concierge. Write 1-2 sentence pitches using ONLY provided facts. Avoid availability claims unless confirmed."
+- **User Prompt Template**: 
+FACTS: {venue_name, category, price_level, rating, reviews, distance, vibe_tags}
+USER_PREFS: {budget, radius, categories, vibe_keywords}
+OUTPUT: { pitch: string, logistics_tip: string }
+common.copy
+- **Grounding**: LLM must NOT invent venue names or prices. Always pass real data from APIs.
+
+### 6. **UI/UX Constraints**
+- **Swipe Cards**: Swipe up = Save to Pack. Swipe right = Open booking_url. Swipe left = Skip (log as "dislike" in PostHog).
+- **Haptic Feedback**: Must trigger on every swipe gesture. Use `UIImpactFeedbackGenerator(.medium)`.
+- **Images**: Use Kingfisher for async loading. Placeholder = blurhash. Never show broken images.
+- **Loading States**: Show skeleton cards, not spinners, during search.
+
+### 7. **Gamification (v1.5) - Hidden for Now**
+- DB schema exists but UI is commented out. Do NOT implement Mapbox or GPS check-ins until MVP ships.
+- Points per check-in: 10. Points per Date Pack completed: 50.
+- Anti-cheat: Must verify GPS within 0.5mi radius of venue lat/lng.
+
+### 8. **Monetization Boundaries**
+- **Free Tier**: 10 AI searches/month. Unlimited Basic Mode (no AI pitch).
+- **Premium**: $9.99/month. Features: Unlimited AI, Date Passport, Collaborative Boards.
+- **NEVER**: Show ads in v1.0. No sponsored placements until 10k users.
+
+### 9. **Analytics Events to Track**
+- `user_signed_up` (properties: auth_provider)
+- `search_performed` (city, category, budget, radius)
+- `card_viewed` (venue_id, rank_position)
+- `card_swiped_up` (saved_to_pack)
+- `card_swiped_right` (booking_clicked)
+- `deep_link_opened` (provider: opentable/resy)
+- `cache_hit` / `cache_miss` (measure cost savings)
+
+### 10. **Git Workflow**
+- Branch naming: `feature/search-api`, `bug/cache-ttl`
+- Commit messages: `feat: add Dateability Score`, `fix: cache key collision`
+- PRs must pass: (1) Swift lint, (2) TypeScript build, (3) Golden set tests (top 10 metros x 10 queries = 100 assertions)
+
+### 11. **Golden Set Test (MUST PASS)**
+For each of these cities: **NYC, LA, Chicago, Austin, San Diego**  
+For each query: **"romantic dinner under $100"**, **"fun arcade under $50"**, **"quiet bar within 5mi"**  
+Assert: **At least 1 suggestion in top 3 must be a non-chain local gem**.
+
+### 12. **Emergency Override**
+If you (the human) are stuck for >2 hours on any Cursor-generated code, **immediately** message me with the file path and error. Do not spin your wheels.
+
+---
+
+## **How to Load This into Cursor**
+
+1. **Open Cursor Settings** (`Cmd+,`)
+2. **Go to "Features" → "Custom Instructions"**
+3. **Paste the entire manifesto above** into the text box
+4. **Also save it as `/cursor-instructions.md`** in your repo (Cursor auto-reads this)
+
+**Every time you start a new chat in Cursor, begin with:**
+@cursor-instructions.md Build the search API endpoint...
+common.copy
+
+This ensures the AI has full context.
+
+---
+
+## **How the 5 Steps Connect to This Manifesto**
+
+| Step | Cursor Prompt | Manifesto Rule Enforced |
+|------|---------------|------------------------|
+| **Step 1: Auth** | `"Create SwiftUI Apple Sign-In..."` | Rule #1 (Component Purity), #7 (No gamification UI) |
+| **Step 2: Search API** | `"Write TypeScript function searchPlaces..."` | Rule #2 (Cost Guardrails), #3 (Zod validation), #4 (Data Flow) |
+| **Step 3: Dateability Score** | `"Write Python calculate_dateability_score..."` | Rule #5 (AI Prompt Engineering), #11 (Golden Set Test) |
+| **Step 4: Swipe Cards** | `"Create SwiftUI SwipeCardView..."` | Rule #6 (UI/UX Constraints), #9 (Track `card_swiped_up`) |
+| **Step 5: Analytics** | `"Configure PostHog SDK..."` | Rule #9 (Analytics Events) |
+
+**Without the manifesto**, Cursor might:
+- Use CoreData instead of SwiftData (Rule #1 violation)
+- Call OpenAI without caching (Rule #2 violation)
+- Forget to track analytics (Rule #9 violation)
+- Build the map UI in v1.0 (Rule #7 violation)
+
+---
+
+## **Your Immediate Action Plan (Next 30 Minutes)**
+
+1. **Create the file**: `~/DateGenie/cursor-instructions.md` (copy the manifesto above)
+2. **Open Cursor → Settings → Custom Instructions** → Paste manifesto
+3. **Create folder structure**:
+   ```bash
+   mkdir -p DateGenie/date-genie-backend
+   cd DateGenie
+Initialize Git:
+bash
+common.copy
+git init
+git add cursor-instructions.md
+git commit -m "feat: add CEO manifesto"
