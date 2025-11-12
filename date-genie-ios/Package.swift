@@ -4,8 +4,7 @@ import PackageDescription
 let package = Package(
     name: "DateGenie",
     platforms: [
-        .iOS(.v16),      // iOS 16+ for iPhone
-        .macOS(.v12)     // macOS 12+ for Catalyst builds
+        .iOS(.v16)  // iOS 16+ ONLY - no macOS support needed
     ],
     products: [
         .library(
@@ -20,8 +19,8 @@ let package = Package(
         .target(
             name: "DateGenie",
             dependencies: [
-                .product(name: "Kingfisher", package: "Kingfisher"),
-                .product(name: "PostHog", package: "posthog-ios")
+                "Kingfisher",
+                "PostHog"
             ],
             path: "DateGenie"
         )
