@@ -19,8 +19,8 @@ let package = Package(
         .target(
             name: "DateGenie",
             dependencies: [
-                "Kingfisher",
-                "PostHog"
+                .product(name: "Kingfisher", package: "Kingfisher"),
+                .product(name: "PostHog", package: "posthog-ios") // Fixed: explicit package reference
             ],
             path: "DateGenie"
         )
