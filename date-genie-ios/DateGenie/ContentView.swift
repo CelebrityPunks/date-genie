@@ -1,136 +1,107 @@
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
-    @State private var venues: [Venue] = []
-    @State private var currentIndex = 0
-    @State private var isLoading = false
+    @StateObject private var viewModel = DateGenieViewModel()
+    @State private var selectedTab = 1
     
-    private let api = APIService.shared
-    private let analytics = PostHogAnalytics.shared
+    init() {
+        let appearance = UITabBarAppearance()
+        appearance.configureWithTransparentBackground()
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
+    }
     
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [.pink.opacity(0.2), .purple.opacity(0.2)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+        ZStack(alignment: .bottom) {
+            DesignSystem.Colors.canvas
+                .ignoresSafeArea()
             
-            if isLoading {
-                ProgressView("Finding perfect dates...")
-                    .scaleEffect(1.5)
-            } else if venues.isEmpty {
-                VStack(spacing: 20) {
-                    Text("No venues found")
-                        .font(.title2)
-                        .foregroundColor(.secondary)
-                    
-                    Button("Search Again") {
-                        Task { await loadVenues() }
-                    }
-                    .buttonStyle(.borderedProminent)
+            // Main Content
+            Group {
+                switch selectedTab {
+                case 0:
+                    FilterPageView(onSearchComplete: { selectedTab = 1 })
+                case 1:
+                    SwipePageView()
+                case 2:
+                    SavedDatesView()
+                case 3:
+                    DatePackPageView()
+                case 4:
+                    ProfilePageView()
+                default:
+                    SwipePageView()
                 }
-            } else if currentIndex < venues.count {
-                SwipeCardView(
-                    venue: venues[currentIndex],
-                    onSave: {
-                        saveVenue(venues[currentIndex])
-                        nextCard()
-                    },
-                    onSkip: {
-                        skipVenue(venues[currentIndex])
-                        nextCard()
-                    },
-                    onBook: {
-                        bookVenue(venues[currentIndex])
-                        nextCard()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            
+            // Custom Tab Bar
+            CustomTabBar(selectedTab: $selectedTab)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 10)
+        }
+        .environmentObject(viewModel)
+        .preferredColorScheme(.light)
+    }
+}
+
+struct CustomTabBar: View {
+    @Binding var selectedTab: Int
+    
+    let tabs = [
+        (icon: "slider.horizontal.3", title: "Filters"),
+        (icon: "sparkles.rectangle.stack.fill", title: "Swipe"),
+        (icon: "heart.fill", title: "Saved"),
+        (icon: "bag.fill", title: "Packs"),
+        (icon: "person.fill", title: "Profile")
+    ]
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<tabs.count, id: \.self) { index in
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        selectedTab = index
                     }
-                )
-                .transition(.asymmetric(insertion: .scale, removal: .opacity))
-            } else {
-                VStack(spacing: 20) {
-                    Text("You've seen all venues!")
-                        .font(.title2)
-                    
-                    Button("Search for more") {
-                        currentIndex = 0
-                        Task { await loadVenues() }
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: tabs[index].icon)
+                            .font(.system(size: 20, weight: .semibold))
+                            .symbolEffect(.bounce, value: selectedTab == index)
+                        
+                        if selectedTab == index {
+                            Circle()
+                                .fill(DesignSystem.Colors.magicGold)
+                                .frame(width: 6, height: 6)
+                                .overlay(
+                                    Circle()
+                                        .stroke(DesignSystem.Colors.ink, lineWidth: 1)
+                                )
+                                .matchedGeometryEffect(id: "tab_dot", in: namespace)
+                        } else {
+                            Circle()
+                                .fill(Color.clear)
+                                .frame(width: 6, height: 6)
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .foregroundColor(selectedTab == index ? DesignSystem.Colors.ink : DesignSystem.Colors.ink.opacity(0.4))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 60)
+                    .contentShape(Rectangle())
                 }
             }
         }
-        .task {
-            await loadVenues()
-        }
+        .background(Color.white)
+        .clipShape(Capsule())
+        .overlay(
+            Capsule()
+                .stroke(DesignSystem.Colors.ink, lineWidth: 3)
+        )
+        .shadow(color: DesignSystem.Colors.ink, radius: 0, x: 4, y: 4)
     }
     
-    private func loadVenues() async {
-        isLoading = true
-        
-        do {
-            venues = try await api.searchVenues(
-                city: "NYC",
-                categories: ["Food", "Romantic"],
-                budget: 100,
-                radius: 10,
-                userId: "test_user_123"
-            )
-            
-            currentIndex = 0
-            
-            analytics.capture("search_performed", properties: [
-                "city": "NYC",
-                "categories": ["Food", "Romantic"],
-                "result_count": venues.count
-            ])
-            
-        } catch {
-            print("❌ Search failed:", error.localizedDescription)
-        }
-        
-        isLoading = false
-    }
-    
-    private func nextCard() {
-        withAnimation {
-            currentIndex += 1
-        }
-    }
-    
-    private func saveVenue(_ venue: Venue) {
-        analytics.capture("card_swiped_up", properties: [
-            "venue_id": venue.id,
-            "venue_name": venue.name
-        ])
-        
-        print("💾 Saved: \(venue.name)")
-    }
-    
-    private func skipVenue(_ venue: Venue) {
-        analytics.capture("card_swiped_left", properties: [
-            "venue_id": venue.id,
-            "venue_name": venue.name,
-            "disliked": true
-        ])
-        
-        print("⏭️ Skipped: \(venue.name)")
-    }
-    
-    private func bookVenue(_ venue: Venue) {
-        analytics.capture("card_swiped_right", properties: [
-            "venue_id": venue.id,
-            "venue_name": venue.name,
-            "booking_url": venue.bookingUrl
-        ])
-        
-        if let url = URL(string: venue.bookingUrl) {
-            UIApplication.shared.open(url)
-        }
-        
-        print("📅 Booking: \(venue.name)")
-    }
+    @Namespace private var namespace
 }
 
 #Preview {

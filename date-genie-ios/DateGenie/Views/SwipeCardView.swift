@@ -1,146 +1,126 @@
 import SwiftUI
 import Kingfisher
 
-// Manifesto Rule #6: Swipe Cards with haptic feedback
 struct SwipeCardView: View {
     @State private var offset: CGSize = .zero
-    @State private var feedbackGenerator = UIImpactFeedbackGenerator(style: .medium)
-    @State private var showBookingAlert = false
     
     let venue: Venue
-    let onSave: () -> Void
-    let onSkip: () -> Void
-    let onBook: () -> Void
+    let onDislike: () -> Void
+    let onLike: () -> Void
+    let onOpenDetail: (Venue) -> Void
     
     private func triggerHaptic() {
-        feedbackGenerator.prepare()
-        feedbackGenerator.impactOccurred()
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare()
+        generator.impactOccurred()
     }
     
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 20)
-                .fill(.ultraThinMaterial)
-                .shadow(radius: 10)
-            
+            // Card Content
             VStack(spacing: 0) {
-                KFImage(URL(string: venue.photoUrl ?? ""))
-                    .placeholder {
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.3))
-                            .overlay(ProgressView().scaleEffect(1.5))
-                    }
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(height: 300)
-                    .clipped()
-                
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text(venue.name)
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .lineLimit(2)
-                        Spacer()
-                        Text("\(venue.dateabilityScore, specifier: "%.1f")")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.purple.opacity(0.2))
-                            .foregroundColor(.purple)
-                            .clipShape(Capsule())
-                    }
+                // Image Area
+                ZStack(alignment: .topTrailing) {
+                    KFImage(URL(string: venue.photoUrl ?? ""))
+                        .placeholder {
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.2))
+                                .overlay(ProgressView())
+                        }
+                        .resizable()
+                        .scaledToFill()
+                        .frame(height: 220)
+                        .clipped()
+                        .overlay(
+                            Rectangle()
+                                .stroke(DesignSystem.Colors.ink, lineWidth: 3)
+                        )
                     
-                    Text(venue.aiPitch)
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                        .lineLimit(3)
+                    // Score Badge
+                    Text(String(format: "%.1f", venue.dateabilityScore))
+                        .font(DesignSystem.Typography.caption())
+                        .foregroundColor(DesignSystem.Colors.ink)
+                        .padding(8)
+                        .background(DesignSystem.Colors.magicGold)
+                        .overlay(
+                            Rectangle()
+                                .stroke(DesignSystem.Colors.ink, lineWidth: 2)
+                        )
+                        .offset(x: -10, y: 10)
+                        .shadow(color: DesignSystem.Colors.ink, radius: 0, x: 2, y: 2)
+                }
+                
+                // Info Area
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(venue.name)
+                            .font(DesignSystem.Typography.headerMedium())
+                            .foregroundColor(DesignSystem.Colors.ink)
+                            .lineLimit(2)
+                        
+                        Text(venue.aiPitch)
+                            .font(DesignSystem.Typography.body())
+                            .foregroundColor(DesignSystem.Colors.ink)
+                            .lineLimit(3)
+                    }
                     
                     if !venue.logisticsTip.isEmpty {
                         HStack(alignment: .top) {
                             Image(systemName: "info.circle.fill")
-                                .foregroundColor(.blue)
+                                .foregroundColor(DesignSystem.Colors.genieBlue)
                             Text(venue.logisticsTip)
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
                         }
                     }
                     
+                    // Tags
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 8) {
                             ForEach(venue.selectedCategories, id: \.self) { category in
                                 Text(category)
-                                    .font(.caption2)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.orange.opacity(0.2))
-                                    .foregroundColor(.orange)
-                                    .clipShape(Capsule())
+                                    .font(.caption.bold())
+                                    .foregroundColor(DesignSystem.Colors.ink)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Color.white)
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(DesignSystem.Colors.ink, lineWidth: 2)
+                                    )
                             }
                         }
                     }
-                    
-                    HStack(spacing: 20) {
-                        Button(action: {
-                            triggerHaptic()
-                            onSkip()
-                        }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .resizable()
-                                .frame(width: 50, height: 50)
-                                .foregroundColor(.red)
-                        }
-                        Spacer()
-                        Button(action: {
-                            triggerHaptic()
-                            onSave()
-                        }) {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .resizable()
-                                .frame(width: 60, height: 60)
-                                .foregroundColor(.green)
-                        }
-                        Spacer()
-                        Button(action: {
-                            triggerHaptic()
-                            onBook()
-                        }) {
-                            Image(systemName: "arrow.right.circle.fill")
-                                .resizable()
-                                .frame(width: 50, height: 50)
-                                .foregroundColor(.blue)
-                        }
-                    }
-                    .padding(.top, 10)
                 }
-                .padding()
+                .padding(20)
+                .background(Color.white)
             }
+            .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadius)
+                    .stroke(DesignSystem.Colors.ink, lineWidth: DesignSystem.Layout.borderWidth)
+            )
+            .shadow(color: DesignSystem.Colors.ink, radius: 0, x: 8, y: 8)
         }
-        .frame(width: 300, height: 500)
-        .offset(x: offset.width, y: offset.height)
-        .rotationEffect(.degrees(Double(offset.width / 20)))
+        .frame(maxWidth: .infinity)
+        .frame(height: 420)
+        .contentShape(Rectangle())
+        .onTapGesture { onOpenDetail(venue) }
+        .offset(x: offset.width)
+        .rotationEffect(.degrees(Double(offset.width / 14)))
         .gesture(
             DragGesture()
-                .onChanged { gesture in
-                    offset = gesture.translation
-                }
-                .onEnded { _ in
-                    let threshold = 100.0
-                    if abs(offset.width) > threshold {
-                        if offset.width > 0 {
-                            onBook()
-                        } else {
-                            onSkip()
-                        }
-                    } else if offset.height < -threshold {
-                        onSave()
+                .onChanged { offset = $0.translation }
+                .onEnded { value in
+                    if value.translation.width > 120 {
+                        triggerHaptic()
+                        onLike()
+                    } else if value.translation.width < -120 {
+                        triggerHaptic()
+                        onDislike()
                     }
-                    withAnimation {
-                        offset = .zero
-                    }
+                    withAnimation(.spring()) { offset = .zero }
                 }
         )
-        .animation(.spring(), value: offset)
     }
 }

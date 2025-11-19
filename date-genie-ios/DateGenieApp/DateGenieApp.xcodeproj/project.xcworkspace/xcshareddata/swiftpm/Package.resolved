@@ -1,0 +1,24 @@
+{
+  "originHash" : "fe2b2f0aedaea3d65ff2bec31a93a2804f20618b0592cd75319aad6eca4f98be",
+  "pins" : [
+    {
+      "identity" : "kingfisher",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/onevcat/Kingfisher.git",
+      "state" : {
+        "revision" : "4d75de347da985a70c63af4d799ed482021f6733",
+        "version" : "8.6.1"
+      }
+    },
+    {
+      "identity" : "posthog-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/PostHog/posthog-ios.git",
+      "state" : {
+        "revision" : "b71b7b1ba861391377d01251479530b938881ce0",
+        "version" : "3.35.0"
+      }
+    }
+  ],
+  "version" : 3
+}

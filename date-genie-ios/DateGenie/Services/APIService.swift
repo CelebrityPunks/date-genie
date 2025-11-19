@@ -2,7 +2,7 @@ import Foundation
 
 class APIService {
     static let shared = APIService()
-    private let baseURL = "http://localhost:3000"
+    private let baseURL = "https://date-genie.vercel.app"
     
     func searchVenues(
         city: String,
@@ -11,7 +11,6 @@ class APIService {
         radius: Double,
         userId: String
     ) async throws -> [Venue] {
-        
         let url = URL(string: "\(baseURL)/api/search")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -30,8 +29,21 @@ class APIService {
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+        guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
+        }
+        
+        if !(200...299).contains(httpResponse.statusCode) {
+            if let apiError = try? JSONDecoder().decode(APIErrorResponse.self, from: data),
+               let message = apiError.error {
+                throw NSError(domain: "APIError", code: httpResponse.statusCode, userInfo: [
+                    NSLocalizedDescriptionKey: message
+                ])
+            } else {
+                let rawBody = String(data: data, encoding: .utf8) ?? "<no body>"
+                print("Server error \(httpResponse.statusCode): \(rawBody)")
+                throw URLError(.badServerResponse)
+            }
         }
         
         let searchResponse = try JSONDecoder().decode(SearchResponse.self, from: data)
@@ -51,5 +63,10 @@ struct SearchResponse: Codable {
     let source: String?
     let data: [Venue]
     let latency: Int?
+    let error: String?
+}
+
+struct APIErrorResponse: Codable {
+    let success: Bool?
     let error: String?
 }
