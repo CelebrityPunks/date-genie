@@ -35,8 +35,8 @@ export async function POST(request: NextRequest) {
     lastRequestTime = now;
 
     const categoriesHash = categories.sort().join(',');
-    // Updated cache key to v3 to invalidate old static results and force fresh shuffled fetches
-    const cacheKey = `search_v3:${city}:${query}:${budget}:${radius}:${categoriesHash}`;
+    // Updated cache key to v4 to invalidate old static results and force fresh shuffled fetches
+    const cacheKey = `search_v4:${city}:${query}:${budget}:${radius}:${categoriesHash}`;
     const cachedResult = await redis.get(cacheKey);
 
     if (cachedResult) {
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Shuffle the cached results on every hit to ensure variety
-      const shuffledData = shuffleArray(cachedResult as any[]).slice(0, 10);
+      const shuffledData = shuffleArray(cachedResult as any[]).slice(0, 50);
 
       return NextResponse.json({
         success: true,
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
     await redis.set(cacheKey, filteredVenues, { ex: 7 * 24 * 60 * 60 });
 
     // Shuffle and slice for the response
-    const responseVenues = shuffleArray(filteredVenues).slice(0, 10);
+    const responseVenues = shuffleArray(filteredVenues).slice(0, 50);
 
     if (userId) {
       await trackEvent('search_performed', {
