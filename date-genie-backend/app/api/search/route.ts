@@ -35,7 +35,8 @@ export async function POST(request: NextRequest) {
     lastRequestTime = now;
 
     const categoriesHash = categories.sort().join(',');
-    const cacheKey = `search:${city}:${query}:${budget}:${radius}:${categoriesHash}`;
+    // Updated cache key to v3 to invalidate old static results and force fresh shuffled fetches
+    const cacheKey = `search_v3:${city}:${query}:${budget}:${radius}:${categoriesHash}`;
     const cachedResult = await redis.get(cacheKey);
 
     if (cachedResult) {
@@ -43,10 +44,13 @@ export async function POST(request: NextRequest) {
         await trackEvent('cache_hit', { userId, cacheKey, source: 'redis' });
       }
 
+      // Shuffle the cached results on every hit to ensure variety
+      const shuffledData = shuffleArray(cachedResult as any[]).slice(0, 10);
+
       return NextResponse.json({
         success: true,
         source: 'cache',
-        data: cachedResult,
+        data: shuffledData,
         latency: Date.now() - startTime,
       });
     }
@@ -61,12 +65,12 @@ export async function POST(request: NextRequest) {
     const googlePlacesUrl = `https://places.googleapis.com/v1/places:searchText`;
     const googlePayload = {
       textQuery: enhancedQuery,
-      maxResultCount: 20,
-      includedType: googleTypes[0],
+      maxResultCount: 50,
+      // includedType: googleTypes[0], // Removed to broaden search results
       locationBias: {
         circle: {
           center: { latitude: 40.7128, longitude: -74.006 },
-          radius: radius * 1609.34,
+          radius: radius * 1000,
         },
       },
     };
@@ -77,7 +81,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY!,
         'X-Goog-FieldMask':
-          'places.name,places.displayName,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.types,places.location,places.photos,places.websiteUri,places.googleMapsUri',
+          'places.name,places.displayName,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.types,places.location,places.photos,places.websiteUri,places.googleMapsUri,places.editorialSummary,places.generativeSummary,places.reviews',
       },
       body: JSON.stringify(googlePayload),
     });
@@ -107,6 +111,7 @@ export async function POST(request: NextRequest) {
             distance: 0,
             vibe_tags: [...vibeTags, ...vibeBoost],
             selected_categories: categories,
+            summary: place.editorialSummary?.text || place.generativeSummary?.overview?.text || null,
           };
 
           const dateabilityScore = calculateDateabilityScore(
@@ -114,11 +119,13 @@ export async function POST(request: NextRequest) {
             categories
           );
 
-          const aiPitch = await generateAIPitch(venueData, {
-            budget,
-            radius,
-            categories,
-          });
+          // const aiPitch = await generateAIPitch(venueData, {
+          //   budget,
+          //   radius,
+          //   categories,
+          // });
+
+          const summary = place.editorialSummary?.text || place.generativeSummary?.overview?.text || null;
 
           return {
             id: venueData.id,
@@ -135,22 +142,32 @@ export async function POST(request: NextRequest) {
             vibeTags: venueData.vibe_tags,
             selectedCategories: categories,
             dateabilityScore,
-            aiPitch: aiPitch.pitch,
-            logisticsTip: aiPitch.logistics_tip,
+            aiPitch: summary || "No description available.", // Use Google summary directly
+            logisticsTip: "", // Removed AI logistics tip
             bookingUrl: place.websiteUri || place.googleMapsUri,
             photoUrl: place.photos?.[0]?.name
               ? `https://places.googleapis.com/v1/${place.photos[0].name}/media?key=${process.env.GOOGLE_PLACES_API_KEY}&maxHeightPx=800`
               : null,
+            summary: place.editorialSummary?.text || place.generativeSummary?.overview?.text || null,
+            reviews: place.reviews?.slice(0, 3).map((r: any) => ({
+              authorName: r.authorAttribution?.displayName || 'Anonymous',
+              text: r.text?.text || '',
+              rating: r.rating,
+            })) || [],
           };
         }) ?? []
       )) || [];
 
-    const filteredVenues = venues
+    // Filter by budget
+    let filteredVenues = venues
       .filter((v) => isWithinBudget(v.priceLevel, budget))
-      .sort((a, b) => b.dateabilityScore - a.dateabilityScore)
-      .slice(0, 10);
+      .sort((a, b) => b.dateabilityScore - a.dateabilityScore);
 
+    // Cache the FULL list (up to 50) so we can shuffle it on every request
     await redis.set(cacheKey, filteredVenues, { ex: 7 * 24 * 60 * 60 });
+
+    // Shuffle and slice for the response
+    const responseVenues = shuffleArray(filteredVenues).slice(0, 10);
 
     if (userId) {
       await trackEvent('search_performed', {
@@ -167,7 +184,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       source: 'api',
-      data: filteredVenues,
+      data: responseVenues,
       latency: Date.now() - startTime,
     });
   } catch (error) {
@@ -222,4 +239,13 @@ async function trackEvent(eventName: string, properties: Record<string, any>) {
   } catch (e) {
     console.error('PostHog tracking failed:', e);
   }
+}
+
+function shuffleArray<T>(array: T[]): T[] {
+  const newArray = [...array];
+  for (let i = newArray.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+  }
+  return newArray;
 }

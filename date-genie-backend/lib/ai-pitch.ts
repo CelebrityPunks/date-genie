@@ -44,16 +44,12 @@ export async function generateAIPitch(
   const systemPrompt =
     'You are a date concierge. Write 1-2 sentence pitches using ONLY provided facts. Incorporate user selected categories naturally. Avoid availability claims unless confirmed.';
 
-  const userPrompt = `FACTS: Name: ${venue.name}, Category: ${
-    venue.categories?.[0] ?? 'unknown'
-  }, Price: ${venue.price_level}, Rating: ${venue.rating}/5, Reviews: ${
-    venue.review_count
-  }, Distance: ${Math.round(venue.distance ?? 0)}mi, Vibes: ${
-    venue.vibe_tags?.join(', ') ?? 'none'
-  }
-USER_PREFS: Budget: $${userPrefs.budget}, Radius: ${
-    userPrefs.radius
-  }mi, Categories: ${userPrefs.categories.join(', ')}
+  const userPrompt = `FACTS: Name: ${venue.name}, Category: ${venue.categories?.[0] ?? 'unknown'
+    }, Price: ${venue.price_level}, Rating: ${venue.rating}/5, Reviews: ${venue.review_count
+    }, Distance: ${Math.round(venue.distance ?? 0)}mi, Vibes: ${venue.vibe_tags?.join(', ') ?? 'none'
+    }
+USER_PREFS: Budget: $${userPrefs.budget}, Radius: ${userPrefs.radius
+    }mi, Categories: ${userPrefs.categories.join(', ')}
 
 OUTPUT: { "pitch": string, "logistics_tip": string }`;
 
@@ -98,10 +94,13 @@ OUTPUT: { "pitch": string, "logistics_tip": string }`;
     return result;
   } catch (error) {
     console.error('AI pitch generation failed:', error);
+
+    const fallbackText = venue.summary
+      ? venue.summary
+      : `${venue.name} offers ${venue.vibe_tags?.join(', ') || 'unique'} vibes perfect for ${userPrefs.categories.join(' or ')}.`;
+
     const fallback: PitchResult = {
-      pitch: `${venue.name} offers ${venue.vibe_tags?.join(', ') || 'unique'} vibes perfect for ${userPrefs.categories.join(
-        ' or '
-      )}.`,
+      pitch: fallbackText,
       logistics_tip: 'Check reviews for current hours and make reservations.',
     };
 
