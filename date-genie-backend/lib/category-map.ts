@@ -67,10 +67,10 @@ export const CATEGORY_MAP: Record<DateCategory, CategoryConfig> = {
 export function buildSearchQuery(
   city: string,
   userQuery: string,
-  categories: DateCategory[]
+  categories: string[]
 ): string {
   const categoryKeywords = categories.flatMap(
-    (cat) => CATEGORY_MAP[cat].queryKeywords
+    (cat) => CATEGORY_MAP[cat as DateCategory]?.queryKeywords || [cat]
   );
   const uniqueKeywords = Array.from(
     new Set([...userQuery.split(' '), ...categoryKeywords])
@@ -78,12 +78,12 @@ export function buildSearchQuery(
   return `${uniqueKeywords.join(' ')} in ${city}`;
 }
 
-export function getGoogleTypes(categories: DateCategory[]): string[] {
-  const types = categories.flatMap((cat) => CATEGORY_MAP[cat].googleTypes);
+export function getGoogleTypes(categories: string[]): string[] {
+  const types = categories.flatMap((cat) => CATEGORY_MAP[cat as DateCategory]?.googleTypes || []);
   return Array.from(new Set(types));
 }
 
-export function getVibeBoostTags(categories: DateCategory[]): string[] {
-  const tags = categories.flatMap((cat) => CATEGORY_MAP[cat].vibeBoostTags);
+export function getVibeBoostTags(categories: string[]): string[] {
+  const tags = categories.flatMap((cat) => CATEGORY_MAP[cat as DateCategory]?.vibeBoostTags || [cat]);
   return Array.from(new Set(tags));
 }

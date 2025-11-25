@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { city, query, budget, radius, categories, userId } =
+    const { city, query, budget, radius, categories, userId, lat, lng } =
       searchQuerySchema.parse(body);
 
     const now = Date.now();
@@ -59,21 +59,24 @@ export async function POST(request: NextRequest) {
       await trackEvent('cache_miss', { userId, cacheKey, source: 'api' });
     }
 
-    const enhancedQuery = buildSearchQuery(city, query, categories);
-    const googleTypes = getGoogleTypes(categories);
+    // Construct Google Places Text Search Payload
+    const enhancedQuery = `${query} in ${city}`;
 
     const googlePlacesUrl = `https://places.googleapis.com/v1/places:searchText`;
-    const googlePayload = {
+    const googlePayload: any = {
       textQuery: enhancedQuery,
       maxResultCount: 50,
-      // includedType: googleTypes[0], // Removed to broaden search results
-      locationBias: {
+    };
+
+    // Only apply location bias if we have coordinates (Current Location mode)
+    if (lat && lng) {
+      googlePayload.locationBias = {
         circle: {
-          center: { latitude: 40.7128, longitude: -74.006 },
+          center: { latitude: lat, longitude: lng },
           radius: radius * 1000,
         },
-      },
-    };
+      };
+    }
 
     const googleResponse = await fetch(googlePlacesUrl, {
       method: 'POST',

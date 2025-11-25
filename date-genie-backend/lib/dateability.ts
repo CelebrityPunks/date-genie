@@ -2,8 +2,8 @@ import { DateabilityInput, DateCategory } from './schemas';
 import { getVibeBoostTags, CATEGORY_MAP } from './category-map';
 
 export function calculateDateabilityScore(
-  venue: DateabilityInput & { selected_categories?: DateCategory[] },
-  userCategories?: DateCategory[]
+  venue: DateabilityInput & { selected_categories?: string[] },
+  userCategories?: string[]
 ): number {
   let score = 0;
 
@@ -31,7 +31,7 @@ export function calculateDateabilityScore(
     score += matches.length * 1.5;
 
     const userGoogleTypes = userCategories.flatMap(
-      (cat) => CATEGORY_MAP[cat].googleTypes
+      (cat) => CATEGORY_MAP[cat as DateCategory]?.googleTypes || []
     );
     const typeMatches = venue.categories.filter((type) =>
       userGoogleTypes.includes(type)

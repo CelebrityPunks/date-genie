@@ -19,8 +19,10 @@ export const searchQuerySchema = z.object({
   query: z.string().min(1),
   budget: z.number().min(0).max(1000),
   radius: z.number().min(1).max(50),
-  categories: z.array(dateCategorySchema).min(1).max(3),
+  categories: z.array(z.string()).min(1).max(3),
   userId: z.string().optional(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
 });
 
 export const dateabilitySchema = z.object({
@@ -35,7 +37,7 @@ export const dateabilitySchema = z.object({
   longitude: z.number(),
   distance: z.number(),
   vibe_tags: z.array(z.string()),
-  selected_categories: z.array(dateCategorySchema),
+  selected_categories: z.array(z.string()),
 });
 
 export type DateabilityInput = z.infer<typeof dateabilitySchema>;
