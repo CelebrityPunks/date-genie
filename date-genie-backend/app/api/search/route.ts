@@ -50,15 +50,20 @@ export async function POST(request: NextRequest) {
         filteredData = filteredData.filter(v => !excludedVenueIds.includes(v.id));
       }
 
-      // Shuffle the cached results on every hit to ensure variety
-      const shuffledData = shuffleArray(filteredData).slice(0, 50);
+      // If we have enough results, return them. Otherwise, fall through to API.
+      if (filteredData.length >= 10) {
+        // Shuffle the cached results on every hit to ensure variety
+        const shuffledData = shuffleArray(filteredData).slice(0, 50);
 
-      return NextResponse.json({
-        success: true,
-        source: 'cache',
-        data: shuffledData,
-        latency: Date.now() - startTime,
-      });
+        return NextResponse.json({
+          success: true,
+          source: 'cache',
+          data: shuffledData,
+          latency: Date.now() - startTime,
+        });
+      }
+      // If filteredData.length < 10, we ignore the cache and fetch fresh from Google
+      // hoping to get more results or different ones.
     }
 
     if (userId) {
