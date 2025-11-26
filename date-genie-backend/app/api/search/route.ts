@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { city, query, budget, radius, categories, userId, lat, lng } =
+    const { city, query, budget, radius, categories, userId, lat, lng, excludedVenueIds } =
       searchQuerySchema.parse(body);
 
     const now = Date.now();
@@ -44,8 +44,14 @@ export async function POST(request: NextRequest) {
         await trackEvent('cache_hit', { userId, cacheKey, source: 'redis' });
       }
 
+      // Filter out excluded venues from cache
+      let filteredData = (cachedResult as any[]);
+      if (excludedVenueIds && excludedVenueIds.length > 0) {
+        filteredData = filteredData.filter(v => !excludedVenueIds.includes(v.id));
+      }
+
       // Shuffle the cached results on every hit to ensure variety
-      const shuffledData = shuffleArray(cachedResult as any[]).slice(0, 50);
+      const shuffledData = shuffleArray(filteredData).slice(0, 50);
 
       return NextResponse.json({
         success: true,
@@ -168,6 +174,11 @@ export async function POST(request: NextRequest) {
 
     // Cache the FULL list (up to 50) so we can shuffle it on every request
     await redis.set(cacheKey, filteredVenues, { ex: 7 * 24 * 60 * 60 });
+
+    // Filter out excluded venues from API result
+    if (excludedVenueIds && excludedVenueIds.length > 0) {
+      filteredVenues = filteredVenues.filter(v => !excludedVenueIds.includes(v.id));
+    }
 
     // Shuffle and slice for the response
     const responseVenues = shuffleArray(filteredVenues).slice(0, 50);

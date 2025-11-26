@@ -23,6 +23,7 @@ export const searchQuerySchema = z.object({
   userId: z.string().optional(),
   lat: z.number().optional(),
   lng: z.number().optional(),
+  excludedVenueIds: z.array(z.string()).optional(),
 });
 
 export const dateabilitySchema = z.object({
