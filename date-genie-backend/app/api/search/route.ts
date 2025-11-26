@@ -35,9 +35,9 @@ export async function POST(request: NextRequest) {
     lastRequestTime = now;
 
     const categoriesHash = categories.sort().join(',');
-    // Updated cache key to v4 to invalidate old static results and force fresh shuffled fetches
-    const cacheKey = `search_v4:${city}:${query}:${budget}:${radius}:${categoriesHash}`;
-    const cachedResult = await redis.get(cacheKey);
+    // Updated cache key to v5 to include pagination support
+    const cacheKey = `search_v5:${city}:${query}:${budget}:${radius}:${categoriesHash}`;
+    const cachedResult = await redis.get(cacheKey) as { venues: any[], nextPageToken?: string } | null;
 
     if (cachedResult) {
       if (userId) {
@@ -45,16 +45,14 @@ export async function POST(request: NextRequest) {
       }
 
       // Filter out excluded venues from cache
-      let filteredData = (cachedResult as any[]);
+      let filteredData = cachedResult.venues || [];
       if (excludedVenueIds && excludedVenueIds.length > 0) {
         filteredData = filteredData.filter(v => !excludedVenueIds.includes(v.id));
       }
 
-      // If we have enough results, return them. Otherwise, fall through to API.
+      // If we have enough results, return them.
       if (filteredData.length >= 10) {
-        // Shuffle the cached results on every hit to ensure variety
         const shuffledData = shuffleArray(filteredData).slice(0, 50);
-
         return NextResponse.json({
           success: true,
           source: 'cache',
@@ -62,8 +60,25 @@ export async function POST(request: NextRequest) {
           latency: Date.now() - startTime,
         });
       }
-      // If filteredData.length < 10, we ignore the cache and fetch fresh from Google
-      // hoping to get more results or different ones.
+
+      // If results are low AND we have a next page token, fetch the next page!
+      if (cachedResult.nextPageToken) {
+        console.log(`Fetching next page for ${cacheKey} using token`);
+        // Fall through to API call, but include the page token
+      } else {
+        // No more pages, just return what we have (even if it's 0)
+        // Or we could fall through to force a fresh fetch just in case, but likely it's exhausted.
+        // Let's force a fresh fetch if we have 0 results, just to be safe.
+        if (filteredData.length > 0) {
+          const shuffledData = shuffleArray(filteredData).slice(0, 50);
+          return NextResponse.json({
+            success: true,
+            source: 'cache_exhausted',
+            data: shuffledData,
+            latency: Date.now() - startTime,
+          });
+        }
+      }
     }
 
     if (userId) {
@@ -78,6 +93,11 @@ export async function POST(request: NextRequest) {
       textQuery: enhancedQuery,
       maxResultCount: 50,
     };
+
+    // Use nextPageToken if we are continuing a search (from cache hit logic)
+    if (cachedResult?.nextPageToken) {
+      googlePayload.pageToken = cachedResult.nextPageToken;
+    }
 
     // Only apply location bias if we have coordinates (Current Location mode)
     if (lat && lng) {
@@ -95,7 +115,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY!,
         'X-Goog-FieldMask':
-          'places.name,places.displayName,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.types,places.location,places.photos,places.websiteUri,places.googleMapsUri,places.editorialSummary,places.generativeSummary,places.reviews',
+          'places.name,places.displayName,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.types,places.location,places.photos,places.websiteUri,places.googleMapsUri,places.editorialSummary,places.generativeSummary,places.reviews,nextPageToken',
       },
       body: JSON.stringify(googlePayload),
     });
@@ -105,8 +125,9 @@ export async function POST(request: NextRequest) {
     }
 
     const googleData = await googleResponse.json();
+    const nextPageToken = googleData.nextPageToken;
 
-    const venues =
+    const newVenues =
       (await Promise.all(
         googleData.places?.map(async (place: any) => {
           const vibeTags = extractVibeTags(place.types || []);
@@ -133,12 +154,6 @@ export async function POST(request: NextRequest) {
             categories
           );
 
-          // const aiPitch = await generateAIPitch(venueData, {
-          //   budget,
-          //   radius,
-          //   categories,
-          // });
-
           const summary = place.editorialSummary?.text || place.generativeSummary?.overview?.text || null;
 
           return {
@@ -156,8 +171,8 @@ export async function POST(request: NextRequest) {
             vibeTags: venueData.vibe_tags,
             selectedCategories: categories,
             dateabilityScore,
-            aiPitch: summary || "No description available.", // Use Google summary directly
-            logisticsTip: "", // Removed AI logistics tip
+            aiPitch: summary || "No description available.",
+            logisticsTip: "",
             bookingUrl: place.websiteUri || place.googleMapsUri,
             photoUrl: place.photos?.[0]?.name
               ? `https://places.googleapis.com/v1/${place.photos[0].name}/media?key=${process.env.GOOGLE_PLACES_API_KEY}&maxHeightPx=800`
@@ -173,20 +188,30 @@ export async function POST(request: NextRequest) {
       )) || [];
 
     // Filter by budget
-    let filteredVenues = venues
-      .filter((v) => isWithinBudget(v.priceLevel, budget))
-      .sort((a, b) => b.dateabilityScore - a.dateabilityScore);
+    let filteredNewVenues = newVenues
+      .filter((v: any) => isWithinBudget(v.priceLevel, budget))
+      .sort((a: any, b: any) => b.dateabilityScore - a.dateabilityScore);
 
-    // Cache the FULL list (up to 50) so we can shuffle it on every request
-    await redis.set(cacheKey, filteredVenues, { ex: 7 * 24 * 60 * 60 });
+    // Combine with existing cache if applicable
+    let allVenues = filteredNewVenues;
+    if (cachedResult?.venues) {
+      // Merge and deduplicate
+      const existingIds = new Set(cachedResult.venues.map((v: any) => v.id));
+      const uniqueNew = filteredNewVenues.filter((v: any) => !existingIds.has(v.id));
+      allVenues = [...cachedResult.venues, ...uniqueNew];
+    }
+
+    // Cache the updated list and new token
+    await redis.set(cacheKey, { venues: allVenues, nextPageToken }, { ex: 7 * 24 * 60 * 60 });
 
     // Filter out excluded venues from API result
+    let finalVenues = allVenues;
     if (excludedVenueIds && excludedVenueIds.length > 0) {
-      filteredVenues = filteredVenues.filter(v => !excludedVenueIds.includes(v.id));
+      finalVenues = finalVenues.filter((v: any) => !excludedVenueIds.includes(v.id));
     }
 
     // Shuffle and slice for the response
-    const responseVenues = shuffleArray(filteredVenues).slice(0, 50);
+    const responseVenues = shuffleArray(finalVenues).slice(0, 50);
 
     if (userId) {
       await trackEvent('search_performed', {
@@ -196,7 +221,7 @@ export async function POST(request: NextRequest) {
         categories,
         budget,
         radius,
-        resultCount: filteredVenues.length,
+        resultCount: finalVenues.length,
       });
     }
 
